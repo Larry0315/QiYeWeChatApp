@@ -1,0 +1,64 @@
+swagger: '2.0'
+info:
+  description: >-
+    企业微信`接收/发送消息`接口文档.
+
+    提供对企业微信`PaaS`应用的消息接收, 和使用`PaaS`应用发送消息的功能
+  version: 2.0.0
+  title: 企业微信PaaS应用
+  contact:
+    email: lvrui@finupgroup.com
+
+host: wechat-paas.paas.production
+basePath: /wechat
+tags:
+  - name: message
+    description: 发送消息接口
+  - name: group
+    description: 管理微信组接口
+schemes:
+  - http
+paths:
+  /message:
+    post:
+      tags:
+        - message
+      summary: 发送消息
+      description: 发送文本信息/图片到企业微信
+      operationId: sendMessage
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: 参数 to 为微信群组ID, 推荐发送到群组, 隐藏的参数为 user, 可以单独发送, 该user必须提供对应的企业微信用户ID
+          required: true
+          schema:
+            $ref: '#/definitions/Message'
+      responses:
+        '200':
+          description: 发送成功
+        '201':
+          description: 发送成功
+
+definitions:
+  Message:
+    type: "object"
+    required:
+    - "from"
+    - "to"
+    - "content"
+    properties:
+      from:
+        type: "string"
+        description: "消息来源的应用(发送方标识)"
+      to:
+        type: "string"
+        description: "微信用户组id"
+      content:
+        type: "string"
+        description: "消息内容(支持emoji)"
+    xml:
+      name: "Message"
