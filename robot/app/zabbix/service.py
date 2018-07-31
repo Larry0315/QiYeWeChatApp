@@ -1,4 +1,7 @@
 from app.zabbix.dao import ZabbixDao
+from utils.logger_helper import LogFactory
+
+logger = LogFactory.get_logger()
 
 
 class ZabbixService:
@@ -15,6 +18,7 @@ class ZabbixService:
         # 根据hostname和trigger得到item_id
         zd = ZabbixDao()
         item_id: int = await zd.from_hostname_to_itemid(hostname=hostname, trigger_name=trigger)
+        logger.info("hostname: {0}, item_id: {1}".format(hostname, item_id))
 
         # 下载图像
         image_path: str = await zd.download_iamge(item_id, event_id)
