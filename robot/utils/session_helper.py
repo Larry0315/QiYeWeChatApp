@@ -1,7 +1,9 @@
 import aiohttp
 import ujson
 from http.cookies import SimpleCookie
-from utils.logger_helper import ilog
+from utils.logger_helper import LogFactory
+
+logger = LogFactory.get_logger()
 
 
 class Session:
@@ -20,11 +22,11 @@ class Session:
         :return:
         """
         if cls.session_instance:
-            ilog.info("Session 复用 {0}".format(cls.session_instance))
+            logger.info("Session 复用 {0}".format(cls.session_instance))
             return cls.session_instance
         else:
             cls.session_instance = aiohttp.ClientSession(json_serialize=ujson.dumps)
-            ilog.info("新 Session 对象已被创建 {0}".format(cls.session_instance))
+            logger.info("新 Session 对象已被创建 {0}".format(cls.session_instance))
             return cls.session_instance
 
     @classmethod
@@ -38,14 +40,14 @@ class Session:
         :return:
         """
         if cls.zabbix_session_instance:
-            ilog.info("Zabbix Session 复用 {0}".format(cls.zabbix_session_instance))
+            logger.info("Zabbix Session 复用 {0}".format(cls.zabbix_session_instance))
             return cls.zabbix_session_instance
         else:
             jar = aiohttp.CookieJar(unsafe=True)
             jar.update_cookies(cookies)
             cls.zabbix_session_instance = aiohttp.ClientSession(cookie_jar=jar,
                                                                 json_serialize=ujson.dumps)
-            ilog.info("新 Zabbix Session 对象已被创建 {0}".format(cls.zabbix_session_instance))
+            logger.info("新 Zabbix Session 对象已被创建 {0}".format(cls.zabbix_session_instance))
             return cls.zabbix_session_instance
 
     @classmethod
@@ -56,7 +58,7 @@ class Session:
         """
         if cls.session_instance:
             await cls.session_instance.close()
-            ilog.info("Session 连接对象已被关闭")
+            logger.info("Session 连接对象已被关闭")
 
     @classmethod
     async def close_zabbix_session(cls):
@@ -66,7 +68,7 @@ class Session:
         """
         if cls.zabbix_session_instance:
             await cls.zabbix_session_instance.close()
-            ilog.info("Zabbix Session 连接对象已被关闭")
+            logger.info("Zabbix Session 连接对象已被关闭")
 
     @classmethod
     async def close_all_session(cls):
