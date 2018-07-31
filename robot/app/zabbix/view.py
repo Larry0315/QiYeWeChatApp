@@ -1,7 +1,9 @@
 from typing import List
-from utils.logger_helper import slog
+from utils.logger_helper import LogFactory
 from utils.error_helper import PickUpDataError
 from app.zabbix.service import ZabbixService
+
+logger = LogFactory.get_logger()
 
 
 class ZabbixHandle:
@@ -16,7 +18,7 @@ class ZabbixHandle:
         :param: content
         :return: dict
         """
-        slog.info("原始内容: {0}".format(content))
+        logger.info("原始内容: {0}".format(content))
         # 初始化数据字典
         content_data: dict = {"hostname": "", "alert_item": "", "event_id": ""}
         content: List[str] = content.split("\n")
@@ -24,16 +26,16 @@ class ZabbixHandle:
             if i.strip().startswith("告警主机"):
                 hostname: str = i.split("：")[1].replace("\r", "")
                 content_data["hostname"] = hostname
-                slog.info("告警主机/hostname: {0}".format(hostname))
+                logger.info(u'告警主机/hostname: {0}'.format(hostname))
                 # hostname = hostname.encode(encoding='utf-8')
             elif i.strip().startswith("告警项目"):
                 alert_item = i.split("：")[1].replace("\r", "")
                 content_data["alert_item"] = alert_item
-                slog.info("告警项目/alert_item: {0}".format(alert_item))
+                logger.info("告警项目/alert_item: {0}".format(alert_item))
             elif i.strip().startswith("事件ID"):
                 event_id = i.split("：")[1].replace("\r", "")
                 content_data["event_id"] = event_id
-                slog.info("事件ID/event_id: {0}".format(event_id))
+                logger.info("事件ID/event_id: {0}".format(event_id))
             else:
                 continue
         # 如果其中任意一项无法提取, 即抛出异常
@@ -42,7 +44,7 @@ class ZabbixHandle:
         else:
             err_info = "解析Zabbix报警信息失败 hostname: {0}, alert_item: {1}, eventid: {2}"\
                 .format(content_data["hostname"], content_data["alert_item"], content_data["eventid"])
-            slog.error(err_info)
+            logger.error(err_info)
             raise PickUpDataError(err_info)
 
     @classmethod
