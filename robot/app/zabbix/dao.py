@@ -2,7 +2,7 @@ import os
 import time
 import aiohttp
 import aiofiles
-from utils.logger_helper import slog
+from utils.logger_helper import LogFactory
 from utils.session_helper import Session
 from aiohttp.client_reqrep import ClientResponse
 from utils.db_helper import MySQLConnector
@@ -13,6 +13,8 @@ from config.robot_cfg import image_path
 from http.cookies import SimpleCookie
 from config.robot_cfg import zbx_user, zbx_password, \
     zbx_login_url, zbx_download_url
+
+logger = LogFactory.get_logger()
 
 
 class ZabbixDao:
@@ -53,7 +55,7 @@ class ZabbixDao:
         # 设置cookies过期时间为当前时间戳+20天
         self.expires = int(time.time()) + self.interval
 
-        slog.info("获取新的 Zabbix Cookies, 过期时间戳: {0}".format(self.expires))
+        logger.info("获取新的 Zabbix Cookies, 过期时间戳: {0}".format(self.expires))
         return self.cookies
 
     @staticmethod
@@ -64,7 +66,7 @@ class ZabbixDao:
         :return:
         """
         sql: str = "select hostid from hosts where name='{0}';".format(hostname)
-        slog.info("查询主机ID SQL: {0}".format(sql))
+        logger.info("查询主机ID SQL: {0}".format(sql))
         # 获取连接池对象
         pool: Pool = await MySQLConnector.get_conn()
         assert pool, "连接池对象为空, 请检查该服务到MySQL的连接配置属性"
@@ -76,11 +78,11 @@ class ZabbixDao:
             async with conn.cursor() as cur:
                 # 执行 SQL 语句
                 await cur.execute(sql)
-                slog.info(cur.description)
+                logger.info(cur.description)
                 # 获取结果(精确查找, 只返回一条记录)
                 (result,) = await cur.fetchone()
                 host_id: int = int(result)
-                slog.info("查询主机ID结果: {0}".format(host_id))
+                logger.info("查询主机ID结果: {0}".format(host_id))
                 return host_id
 
     @staticmethod
@@ -93,9 +95,9 @@ class ZabbixDao:
         """
         # 处理触发器字符串
         trigger_name: str = trigger_name.replace("'", "\\'")
-        slog.info("trigger_name/key: {0}".format(trigger_name))
+        logger.info("trigger_name/key: {0}".format(trigger_name))
         sql: str = "select itemid from items where hostid={0} and key_='{1}';".format(host_id, trigger_name)
-        slog.info("查询项目ID SQL: {0}".format(sql))
+        logger.info("查询项目ID SQL: {0}".format(sql))
         # 获取连接池对象
         pool: Pool = await MySQLConnector.get_conn()
         assert pool, "连接池对象为空, 请检查该服务到MySQL的连接配置属性"
@@ -107,11 +109,11 @@ class ZabbixDao:
             async with conn.cursor() as cur:
                 # 执行 SQL 语句
                 await cur.execute(sql)
-                slog.info(cur.description)
+                logger.info(cur.description)
                 # 获取结果(精确查找, 只返回一条记录)
                 (result,) = await cur.fetchone()
                 item_id: int = int(result)
-                slog.info("查询项目ID结果: {0}".format(item_id))
+                logger.info("查询项目ID结果: {0}".format(item_id))
                 return item_id
 
     async def from_hostname_to_itemid(self, hostname: str, trigger_name: str) -> int:
@@ -132,24 +134,24 @@ class ZabbixDao:
         """
         # 设置下载图表接口地址
         download_url: str = "{0}?itemids={1}&period=3600".format(self.download_url, str(item_id))
-        slog.info("监控趋势图下载地址: {0}".format(download_url))
+        logger.info("监控趋势图下载地址: {0}".format(download_url))
 
         # 创建/检查图表路径
         try:
             if not os.path.isdir(image_path):
                 os.mkdir(image_path)
         except Exception as e:
-            slog.error("创建保存图片的文件夹失败, 路径: {0} \n{1}".format(image_path, e))
+            logger.info("创建保存图片的文件夹失败, 路径: {0} \n{1}".format(image_path, e))
 
         # 设置图片保存路径
         if not event_id:
             event_id = time.time()
         full_path = "{0}/{1}-{2}.png".format(image_path, item_id, event_id)
-        slog.info("保存图片完整路径: {0}".format(full_path))
+        logger.info("保存图片完整路径: {0}".format(full_path))
 
         # 验证cookies是否可用
         if self.cookies is None or self.expires <= int(time.time()):
-            slog.info("获取新的cookies")
+            logger.info("获取新的cookies")
             # 先将 Zabbix Session 对象置空
             Session.zabbix_session_instance = None
             # 再获取新的 SimpleCookie 对象
@@ -163,7 +165,7 @@ class ZabbixDao:
             async with aiofiles.open(full_path, mode='wb') as f:
                 # 将 Response Body 以二进制方式读取, 写入文件(一次性读取)
                 await f.write(await resp.read())
-                slog.info("图片已下载至 {0}".format(full_path))
+                logger.info("图片已下载至 {0}".format(full_path))
 
         # 返回图片所在的绝对路径
         return full_path
