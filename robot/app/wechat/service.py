@@ -1,8 +1,7 @@
 import time
 import ujson
 import xml.etree.cElementTree as Et
-from aiohttp.client_reqrep import ClientResponse
-from utils.logger_helper import slog
+# from utils.logger_helper import slog
 from utils.xml_helper import CDATA
 from utils.wechat_helper import WeCrypt, random_str6
 from utils.error_helper import ResponseError
@@ -13,6 +12,9 @@ from config.robot_cfg import corpname, corpid, \
 from app.wechat import dao
 from app.wechat.module import WeMessageModule
 from app.zabbix.view import ZabbixHandle
+from utils.logger_helper import LogFactory
+
+logger = LogFactory.get_logger()
 
 
 class WeChat:
@@ -28,16 +30,20 @@ class PaaSAPP(WeChat):
     """
     PaaS应用
     """
+    token: str = ""
+    token_expiration_time: int = 0
+    offset: int = 60
+
     def __init__(self):
         super(PaaSAPP, self).__init__()
         self.app_name: str = app_name
         self.agentid: str = agentid
         self.corpsecret: str = corpsecret
-        self.token: str = ""
+        # self.token: str = ""
         # token_expiration_time = time.time() + expires_in - offset
-        self.token_expiration_time: int = 0
+        # self.token_expiration_time: int = 0
         # 声明在微信Token过期前x秒进行本地过期, 重新获取新的Token
-        self.offset: int = 60
+        # self.offset: int = 60
 
     async def get_token_from_official(self) -> bool:
         """
@@ -46,24 +52,24 @@ class PaaSAPP(WeChat):
         """
         # 构建请求参数
         param = {'corpid': self.corpid, 'corpsecret': self.corpsecret}
-        slog.info("corpid: {0}, corpsecret: {1}".format(self.corpid, self.corpsecret))
+        logger.info("corpid: {0}, corpsecret: {1}".format(self.corpid, self.corpsecret))
         # 发起 http 请求
-        ret: ClientResponse = await dao.get(url=token_url, params=param)
+        ret: str = await dao.get(url=token_url, params=param)
         # 获取响应体内容
-        rep_body: dict = await ret.json()
-        slog.info("获取Token: {0}".format(await ret.text()))
+        logger.info(u"获取Token: {0}".format(ret))
+        rep_body: dict = ujson.loads(ret)
+        logger.info(rep_body)
 
         try:
-            if ret.status in (200, 201) and rep_body['errcode'] == 0:
+            if rep_body['errcode'] == 0:
                 # 获取接口返回的Token过期时间, 在对象中过期时间(时间戳)
-                self.token: str = rep_body['access_token']
+                PaaSAPP.token: str = rep_body['access_token']
                 # 在微信服务器Token过期前进行本地过期
-                self.token_expiration_time: int = time.time() + rep_body['expires_in'] - self.offset
+                PaaSAPP.token_expiration_time: int = time.time() + rep_body['expires_in'] - PaaSAPP.offset
                 return True
-            else:
-                raise ResponseError("{0} Response Error {1}".format(ret.url, ret.status))
         except ResponseError as e:
-            slog.error("获取企业微信Token失败 {0}".format(e))
+            logger.info(u"获取企业微信Token失败 {0}".format(e))
+            logger.info(u"微信返回错误信息: {0}".format(ret))
             return False
 
     async def get_token(self) -> str:
@@ -71,26 +77,26 @@ class PaaSAPP(WeChat):
         获取可用的Token, 当内存中的Token不可用时, 获取新的Token
         :return:
         """
-        if self.token == "" or self.token_expiration_time == 0 or self.token_expiration_time <= time.time():
-            slog.info("Token即将过期, 重新获取Token")
+        if PaaSAPP.token == "" or PaaSAPP.token_expiration_time == 0 or PaaSAPP.token_expiration_time <= time.time():
+            logger.info(u"Token不可用或即将过期, 重新获取Token")
             token: bool = await self.get_token_from_official()
             if token:
-                return self.token
+                logger.info(u"Token获取成功: {0}".format(PaaSAPP.token))
+                return PaaSAPP.token
             else:
-                slog.error("Token获取失败")
+                logger.info(u"Token获取失败")
         else:
-            slog.info("Token未过期, 复用Token {0}".format(self.token))
-            return self.token
+            logger.info(u"Token未过期, 复用Token {0}".format(PaaSAPP.token))
+            return PaaSAPP.token
 
     async def send(self, message: dict, url: str) -> str:
         message: str = ujson.dumps(message, ensure_ascii=False).encode('utf8')
-        slog.info("待发送的消息: {0}".format(message))
+        logger.info(u"待发送的消息: {0}".format(message))
 
         # 获取token
         token: str = await self.get_token()
-        result: ClientResponse = await dao.post(url=url, params={'access_token': token}, data=message)
-        result_body: str = await result.text()
-        slog.info("发送消息状态: {0}".format(result_body))
+        result_body: str = await dao.post(url=url, params={'access_token': token}, data=message)
+        logger.info(u"发送消息状态: {0}".format(result_body))
         return result_body
 
     async def upload_image(self, image_path) -> str:
@@ -102,9 +108,9 @@ class PaaSAPP(WeChat):
         # 获取token
         token: str = await self.get_token()
         params = {'access_token': token, "type": "image"}
-        result: ClientResponse = await dao.post_file(url=upload_res_url, file_path=image_path, params=params)
-        result_body: dict = await result.json()
-        slog.info("上传后取得的资源ID: {0}".format(result_body['media_id']))
+        result: str = await dao.post_file(url=upload_res_url, file_path=image_path, params=params)
+        result_body: dict = ujson.loads(result)
+        logger.info(u"上传后取得的资源ID: {0}".format(result_body['media_id']))
         return result_body['media_id']
 
 
@@ -112,6 +118,16 @@ class MessageService(PaaSAPP):
     """
     企业微信发送信息-业务逻辑层
     """
+
+    message_instance = None
+
+    @classmethod
+    def get_message_obj(cls):
+        if cls.message_instance:
+            return cls.message_instance
+        else:
+            cls.message_instance = MessageService()
+            return cls.message_instance
 
     async def send_message_to_user(self, users: str, content: str):
         message: dict = {
@@ -121,7 +137,7 @@ class MessageService(PaaSAPP):
             "touser": users,
             "text": {"content": content}
         }
-        slog.info("to_user: {0}, content: {1}".format(users, content))
+        logger.info("to_user: {0}, content: {1}".format(users, content))
         return await self.send(message, msg_url)
 
     async def send_message_to_chat_group(self, chat_id: str, content: str) -> str:
@@ -131,7 +147,7 @@ class MessageService(PaaSAPP):
             "text": {"content": content},
             "safe": 0
         }
-        slog.info("to_chat: {0}, content: {1}".format(chat_id, content))
+        logger.info("to_chat: {0}, content: {1}".format(chat_id, content))
         return await self.send(message, msg_chatgroup_url)
 
     async def send_image_to_user(self, users: str, image_id: str):
@@ -142,7 +158,7 @@ class MessageService(PaaSAPP):
             "touser": users,
             "image": {"media_id": image_id}
         }
-        slog.info("to_user: {0}, image_id: {1}".format(users, image_id))
+        logger.info("to_user: {0}, image_id: {1}".format(users, image_id))
         return await self.send(message, msg_url)
 
     async def send_image_to_chat_group(self, chat_id: str, image_id: str):
@@ -152,31 +168,52 @@ class MessageService(PaaSAPP):
             "chatid": chat_id,
             "image": {"media_id": image_id}
         }
-        slog.info("to_chat: {0}, image_id: {1}".format(chat_id, image_id))
-        return await self.send(message, msg_url)
+        logger.info("to_chat: {0}, image_id: {1}".format(chat_id, image_id))
+        return await self.send(message, msg_chatgroup_url)
 
     async def send_message(self, wmm: WeMessageModule):
 
+        if wmm.to_user:
+            await self.send_message_to_user(users=wmm.to_user, content=wmm.content)
+        else:
+            await self.send_message_to_chat_group(chat_id=wmm.to_chat, content=wmm.content)
+
         # 对Zabbix报警做特殊处理
         if wmm.from_app.strip().lower() == "zabbix" and wmm.content.strip().startswith("PROBLEM"):
+            logger.info("收到Zabbix Problem报警信息, 获取一小时趋势图")
             # 获取故障报警最近一小时的趋势图
             zh: ZabbixHandle = ZabbixHandle()
             # 根据报警内容下载趋势图, 取得下载后的图片的绝对路径
             image_path: str = await zh.get_image_path(content=wmm.content)
+            logger.info("图片已下载至: {0}".format(image_path))
             # 上传图像至微信
             image_id: str = await self.upload_image(image_path=image_path)
 
             if wmm.to_user:
-                await self.send_message_to_user(users=wmm.to_user, content=wmm.content)
                 await self.send_image_to_user(users=wmm.to_user, image_id=image_id)
             else:
-                await self.send_message_to_chat_group(chat_id=wmm.to_chat, content=wmm.content)
                 await self.send_image_to_chat_group(chat_id=wmm.to_chat, image_id=image_id)
-        else:
-            if wmm.to_user:
-                await self.send_message_to_user(users=wmm.to_user, content=wmm.content)
-            else:
-                await self.send_message_to_chat_group(chat_id=wmm.to_chat, content=wmm.content)
+
+        # # 对Zabbix报警做特殊处理
+        # if wmm.from_app.strip().lower() == "zabbix" and wmm.content.strip().startswith("PROBLEM"):
+        #     # 获取故障报警最近一小时的趋势图
+        #     zh: ZabbixHandle = ZabbixHandle()
+        #     # 根据报警内容下载趋势图, 取得下载后的图片的绝对路径
+        #     image_path: str = await zh.get_image_path(content=wmm.content)
+        #     # 上传图像至微信
+        #     image_id: str = await self.upload_image(image_path=image_path)
+        #
+        #     if wmm.to_user:
+        #         await self.send_message_to_user(users=wmm.to_user, content=wmm.content)
+        #         await self.send_image_to_user(users=wmm.to_user, image_id=image_id)
+        #     else:
+        #         await self.send_message_to_chat_group(chat_id=wmm.to_chat, content=wmm.content)
+        #         await self.send_image_to_chat_group(chat_id=wmm.to_chat, image_id=image_id)
+        # else:
+        #     if wmm.to_user:
+        #         await self.send_message_to_user(users=wmm.to_user, content=wmm.content)
+        #     else:
+        #         await self.send_message_to_chat_group(chat_id=wmm.to_chat, content=wmm.content)
 
 
 class WeChatService(WeChat):
@@ -241,6 +278,7 @@ class WeChatService(WeChat):
             content: str = xml_tree.find("Content").text
         else:
             # raise error
+            logger.info("Only Support Message Event")
             return "Only Support Message Event"
 
         user_id: str = xml_tree.find("FromUserName").text  # 用户id
@@ -259,13 +297,13 @@ class WeChatService(WeChat):
         to_user_name_cdata = CDATA(user_id)
         from_user_name_cdata = CDATA(corp_id)
         message_type_cdata = CDATA("text")
-        rep_content_cdata = CDATA("📮 消息已转发至PaaS团队")
+        rep_content_cdata = CDATA("📮 消息已转发至PaaS团队🍪")
 
         # 插曲~ 将用户发来的信息, 转发到 paas chat group
-
         user_info: dict = await WeUser().get_user_info(user_id=user_id)
-        transmit_content = "📨 From: {0} {1} \n📒Details: {2}".format(user_info["name"], user_info["position"], content)
-        await MessageService().send_message_to_chat_group(paas_chat_id, transmit_content)
+        transmit_content = "📨 From: {0} {1} \n📒 Details: {2}".format(user_info["name"], user_info["position"], content)
+        message_obj: MessageService = MessageService.get_message_obj()
+        await message_obj.send_message_to_chat_group(paas_chat_id, transmit_content)
 
         # 为节点赋值
         to_user_name.append(to_user_name_cdata)
@@ -334,9 +372,9 @@ class ChatGroup(PaaSAPP):
         token: str = await self.get_token()
 
         params = {'access_token': token}
-        ret: ClientResponse = await dao.post(url="https://qyapi.weixin.qq.com/cgi-bin/appchat/create", data=message, params=params)
-        print(await ret.text())
-        return await ret.text()
+        ret: str = await dao.post(url="https://qyapi.weixin.qq.com/cgi-bin/appchat/create", data=message, params=params)
+        logger.info(ret)
+        return ret
 
     async def create_group_chat(self, chat_name: str=None, userlist: list=None):
         # 如果用户为None, 按默认用户生成组
@@ -361,22 +399,25 @@ class ChatGroup(PaaSAPP):
         token: str = await self.get_token()
 
         params = {'access_token': token}
-        ret: ClientResponse = await dao.post(url=chat_group_create, data=message, params=params)
-        return await ret.text()
+        ret: str = await dao.post(url=chat_group_create, data=message, params=params)
+        return ret
 
 
 class WeUser(PaaSAPP):
     """
     企业微信用户信息查询
     """
+
+
+
     async def get_user_info(self, user_id: str):
         # 获取token
         token: str = await self.get_token()
         # 构建请求参数
         param = {'access_token': token, 'userid': user_id}
         # 发起 http 请求
-        ret: ClientResponse = await dao.get(url=get_user_info_url, params=param)
+        ret: str = await dao.get(url=get_user_info_url, params=param)
         # 获取响应体内容
-        rep_body: dict = await ret.json()
-        print(rep_body["name"], rep_body["position"])
+        rep_body: dict = ujson.loads(ret)
+        logger.info(rep_body["name"], rep_body["position"])
         return rep_body

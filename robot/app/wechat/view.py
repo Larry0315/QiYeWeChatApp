@@ -4,6 +4,9 @@ from multidict import MultiDictProxy
 from app.wechat.service import WeChatService, \
     ChatGroup, MessageService
 from app.wechat.module import WeMessageModule
+from utils.logger_helper import LogFactory
+
+logger = LogFactory.get_logger()
 
 
 class WeChatHandle(web.View):
@@ -21,11 +24,11 @@ class WeChatHandle(web.View):
         timestamp = data.get('timestamp')
         nonce = data.get('nonce')
         echo = data.get('echostr')
-        print(msg_sig, timestamp, nonce, echo)
+        logger.info(msg_sig, timestamp, nonce, echo)
 
         # 解密
         echo_str = WeChatService().echo(msg_sig, timestamp, nonce, echo)
-        print(echo_str)
+        logger.info(echo_str)
         # 将解密后的明文字符串发回给企业微信端
         return web.Response(text=echo_str)
 
@@ -57,6 +60,23 @@ class WeMessageHandle(web.View):
     """
     企业微信发送信息类
     """
+    async def get(self):
+        wmm = WeMessageModule()
+        # 获取URL中的参数
+        data: MultiDictProxy = self.request.query
+        wmm.from_app: str = data.get("from")
+        # to 标识发送到 chat_group
+        wmm.to_chat: str = data.get("to")
+        # user 单独发送到用户, 需要自己拼写微信ID, 格式: "ID1|ID2|ID3"
+        wmm.to_user: str = data.get("user")
+        wmm.content: str = data.get("content")
+        if wmm.to_chat is None and wmm.to_user is None or wmm.from_app is None or wmm.content is None:
+            return web.Response(text="Error: POST body 'from, content, (to/user)' is required")
+
+        message_obj = MessageService.get_message_obj()
+        result = await message_obj.send_message(wmm)
+        return web.Response(text=result)
+
     async def post(self):
         wmm = WeMessageModule()
         # 获取Post body体内容
@@ -70,7 +90,8 @@ class WeMessageHandle(web.View):
         if wmm.to_chat is None and wmm.to_user is None or wmm.from_app is None or wmm.content is None:
             return web.Response(text="Error: POST body 'from, content, (to/user)' is required")
 
-        result = await MessageService().send_message(wmm)
+        message_obj = MessageService.get_message_obj()
+        result = await message_obj.send_message(wmm)
         return web.Response(text=result)
 
 
