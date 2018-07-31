@@ -1,8 +1,11 @@
 from aiomysql.pool import Pool
 from aiomysql import create_pool
-from utils.logger_helper import ilog
+from utils.logger_helper import LogFactory
+from logging import Logger
 from config.robot_cfg import my_host, my_port, \
     my_db, my_user, my_pwd, my_minsize, my_maxsize, my_charset
+
+logger: Logger = LogFactory.get_logger()
 
 
 class MySQLConnector:
@@ -25,24 +28,26 @@ class MySQLConnector:
         :return:
         """
         if cls.connector:
+            logger.info("MySQL连接池对象复用")
             return cls.connector
         else:
             try:
+                logger.info("创建MySQL连接池对象")
                 # 创建连接池对象
                 cls.connector: Pool = await create_pool(host=my_host, port=my_port,
                                                         user=my_user, password=my_pwd,
                                                         db=my_db, charset=my_charset,
                                                         minsize=my_minsize, maxsize=my_maxsize)
-                ilog.info("MySQL数据库连接池已创建\n{0}".format(type(cls.connector)))
+                logger.info("MySQL数据库连接池已创建\n{0}".format(type(cls.connector)))
             except Exception as ex:
-                ilog.error("MySQL数据库连接池创建异常\n{0}".format(ex))
+                logger.info("MySQL数据库连接池创建异常\n{0}".format(ex))
             finally:
                 return cls.connector
 
     @classmethod
     def __del_conn(cls):
         cls.connector: Pool = None
-        ilog.info("清除连接池对象\n".format(type(cls.connector)))
+        logger.info("清除连接池对象\n".format(type(cls.connector)))
 
     @classmethod
     async def close_conn(cls):
@@ -56,9 +61,9 @@ class MySQLConnector:
         if cls.connector:
             # 关闭连接池
             cls.connector.close()
-            ilog.info("正在关闭MySQL连接池")
+            logger.info("正在关闭MySQL连接池")
             # 等待连接处理完毕
             await cls.connector.wait_closed()
-            ilog.info("MySQL连接池已关闭")
+            logger.info("MySQL连接池已关闭")
         # 为单例模式清空连接池对象的值
         cls.__del_conn()
